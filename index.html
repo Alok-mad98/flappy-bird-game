@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <title>Flappy Bird</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; width: 100%; }
+    body {
+      background: #000;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      overflow: hidden;
+      touch-action: none;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+    canvas {
+      display: block;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="game"></canvas>
+  <script>
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+    ctx.imageSmoothingEnabled = false;
+
+    const GAME_WIDTH = 288;
+    const GAME_HEIGHT = 512;
+
+    function resize() {
+      const ratio = GAME_WIDTH / GAME_HEIGHT;
+      let w = window.innerWidth;
+      let h = window.innerHeight;
+      if (w / h > ratio) {
+        canvas.style.height = h + 'px';
+        canvas.style.width = (h * ratio) + 'px';
+      } else {
+        canvas.style.width = w + 'px';
+        canvas.style.height = (w / ratio) + 'px';
+      }
+      canvas.width = GAME_WIDTH;
+      canvas.height = GAME_HEIGHT;
+      ctx.imageSmoothingEnabled = false;
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+  </script>
+</body>
+</html>
