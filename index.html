@@ -233,10 +233,131 @@
     let groundX = 0;
 
     // ============================================================
-    // AUDIO STUB (Task 11 placeholder)
+    // AUDIO SYSTEM (Task 11)
     // ============================================================
+    let audioCtx = null;
+    let audioInitialized = false;
+    let musicInterval = null;
+    let musicGainNode = null;
+
+    function initAudio() {
+      if (audioInitialized) return;
+      try {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        audioInitialized = true;
+      } catch (e) {
+        console.warn('Web Audio API not supported');
+      }
+    }
+
     function playSound(type) {
-      // Audio will be implemented later
+      if (!audioCtx || audioCtx.state === 'suspended') return;
+      const now = audioCtx.currentTime;
+
+      if (type === 'flap') {
+        // Short chirp: sine wave ramping 400->800Hz over 80ms
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(400, now);
+        osc.frequency.linearRampToValueAtTime(800, now + 0.08);
+        gain.gain.setValueAtTime(0.15, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start(now);
+        osc.stop(now + 0.1);
+      }
+
+      else if (type === 'score') {
+        // Pleasant ding: triangle wave, 880Hz then 1100Hz at 50ms
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(880, now);
+        osc.frequency.setValueAtTime(1100, now + 0.05);
+        gain.gain.setValueAtTime(0.12, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start(now);
+        osc.stop(now + 0.15);
+      }
+
+      else if (type === 'hit') {
+        // Low thud: sawtooth wave, 200->50Hz over 300ms
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(200, now);
+        osc.frequency.linearRampToValueAtTime(50, now + 0.3);
+        gain.gain.setValueAtTime(0.2, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start(now);
+        osc.stop(now + 0.3);
+      }
+
+      else if (type === 'levelUp') {
+        // Ascending arpeggio: square wave, [523, 659, 784, 1047] Hz
+        const notes = [523, 659, 784, 1047];
+        notes.forEach(function(freq, i) {
+          const osc = audioCtx.createOscillator();
+          const gain = audioCtx.createGain();
+          osc.type = 'square';
+          osc.frequency.setValueAtTime(freq, now + i * 0.08);
+          gain.gain.setValueAtTime(0, now);
+          gain.gain.setValueAtTime(0.08, now + i * 0.08);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.08 + 0.12);
+          osc.connect(gain);
+          gain.connect(audioCtx.destination);
+          osc.start(now + i * 0.08);
+          osc.stop(now + i * 0.08 + 0.12);
+        });
+      }
+    }
+
+    // Background music: simple 8-bit chiptune loop
+    const MUSIC_MELODY = [262, 294, 330, 294, 262, 330, 294, 262]; // C D E D C E D C
+    const MUSIC_NOTE_DURATION = 0.25; // 250ms per note
+
+    function startMusic() {
+      if (!audioCtx || musicInterval) return;
+      // Resume context if suspended
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+      let noteIndex = 0;
+
+      function playMusicNote() {
+        if (!audioCtx || gameState === 'gameover') {
+          stopMusic();
+          return;
+        }
+        const now = audioCtx.currentTime;
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(MUSIC_MELODY[noteIndex], now);
+        gain.gain.setValueAtTime(0.03, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + MUSIC_NOTE_DURATION * 0.9);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start(now);
+        osc.stop(now + MUSIC_NOTE_DURATION);
+        noteIndex = (noteIndex + 1) % MUSIC_MELODY.length;
+      }
+
+      playMusicNote();
+      musicInterval = setInterval(playMusicNote, MUSIC_NOTE_DURATION * 1000);
+    }
+
+    function stopMusic() {
+      if (musicInterval) {
+        clearInterval(musicInterval);
+        musicInterval = null;
+      }
     }
 
     // ============================================================
@@ -766,6 +887,7 @@
 
     function die() {
       gameState = 'gameover';
+      stopMusic();
       playSound('hit');
 
       // Save best score
@@ -853,8 +975,12 @@
     }
 
     // ============================================================
-    // GAME OVER (minimal - full screen built later)
+    // GAME OVER SCREEN (Task 10)
     // ============================================================
+
+    // Button bounds for click detection
+    let retryBtnBounds = null;
+    let homeBtnBounds = null;
 
     function drawGameOver(dt) {
       // Draw frozen game state underneath
@@ -864,52 +990,177 @@
       drawBird();
       drawHUD();
 
-      // Dark overlay
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
+      // Semi-transparent dark overlay
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
       ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
 
-      // "GAME OVER" text
+      // === STATS PANEL ===
+      const panelW = 230;
+      const panelH = 280;
+      const panelX = (GAME_WIDTH - panelW) / 2;
+      const panelY = 95;
+
+      // Panel shadow
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+      ctx.fillRect(panelX + 4, panelY + 4, panelW, panelH);
+
+      // Panel background
+      ctx.fillStyle = '#DEB887';
+      ctx.fillRect(panelX, panelY, panelW, panelH);
+
+      // Panel border
+      ctx.strokeStyle = '#8B4513';
+      ctx.lineWidth = 3;
+      ctx.strokeRect(panelX, panelY, panelW, panelH);
+
+      // Inner border highlight
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(panelX + 4, panelY + 4, panelW - 8, panelH - 8);
+
+      // === GAME OVER TITLE ===
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.font = 'bold 32px monospace';
-      ctx.lineWidth = 4;
+      ctx.font = 'bold 26px monospace';
+      ctx.lineWidth = 3;
       ctx.strokeStyle = '#000';
-      ctx.strokeText('GAME OVER', GAME_WIDTH / 2, 130);
-      ctx.fillStyle = '#FF4444';
-      ctx.fillText('GAME OVER', GAME_WIDTH / 2, 130);
+      ctx.strokeText('GAME OVER', GAME_WIDTH / 2, panelY + 32);
+      ctx.fillStyle = '#CC2222';
+      ctx.fillText('GAME OVER', GAME_WIDTH / 2, panelY + 32);
 
-      // Score display
-      ctx.font = 'bold 20px monospace';
-      ctx.fillStyle = '#FFF';
-      ctx.strokeText('Score: ' + score, GAME_WIDTH / 2, 200);
-      ctx.fillText('Score: ' + score, GAME_WIDTH / 2, 200);
+      // Divider line under title
+      ctx.strokeStyle = '#8B4513';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(panelX + 15, panelY + 55);
+      ctx.lineTo(panelX + panelW - 15, panelY + 55);
+      ctx.stroke();
 
+      // === STATS ROWS ===
+      const statsX = panelX + 18;
+      const statsValX = panelX + panelW - 18;
+      let rowY = panelY + 80;
+      const rowGap = 32;
+
+      ctx.font = 'bold 16px monospace';
+      ctx.lineWidth = 0;
+
+      // Score
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#333';
+      ctx.fillText('Score', statsX, rowY);
+      ctx.textAlign = 'right';
+      ctx.fillStyle = '#1a1a1a';
+      ctx.fillText('' + score, statsValX, rowY);
+
+      // Best Score
+      rowY += rowGap;
       const best = parseInt(localStorage.getItem('flappyBest') || '0');
-      ctx.strokeText('Best: ' + best, GAME_WIDTH / 2, 235);
-      ctx.fillText('Best: ' + best, GAME_WIDTH / 2, 235);
+      ctx.textAlign = 'left';
+      ctx.fillStyle = '#333';
+      ctx.fillText('Best', statsX, rowY);
+      ctx.textAlign = 'right';
+      ctx.fillStyle = score >= best ? '#CC8800' : '#1a1a1a';
+      ctx.fillText('' + best, statsValX, rowY);
 
-      ctx.font = '16px monospace';
-      ctx.strokeText('Level: ' + getCurrentLevelNumber(), GAME_WIDTH / 2, 270);
-      ctx.fillText('Level: ' + getCurrentLevelNumber(), GAME_WIDTH / 2, 270);
+      // Level Reached
+      rowY += rowGap;
+      ctx.textAlign = 'left';
+      ctx.fillStyle = '#333';
+      ctx.fillText('Level', statsX, rowY);
+      ctx.textAlign = 'right';
+      ctx.fillStyle = '#1a1a1a';
+      ctx.fillText('' + getCurrentLevelNumber(), statsValX, rowY);
 
-      // Tap/click to continue prompt
-      const alpha = 0.5 + 0.5 * Math.sin(Date.now() * 0.004);
-      ctx.globalAlpha = alpha;
-      ctx.font = '16px monospace';
-      ctx.strokeText('TAP TO RETRY', GAME_WIDTH / 2, 350);
+      // Pipes Passed
+      rowY += rowGap;
+      ctx.textAlign = 'left';
+      ctx.fillStyle = '#333';
+      ctx.fillText('Pipes', statsX, rowY);
+      ctx.textAlign = 'right';
+      ctx.fillStyle = '#1a1a1a';
+      ctx.fillText('' + pipesPassed, statsValX, rowY);
+
+      // === BUTTONS ===
+      const btnW = 90;
+      const btnH = 40;
+      const btnGap = 16;
+      const btnY = panelY + panelH - btnH - 20;
+      const retryX = GAME_WIDTH / 2 - btnW - btnGap / 2;
+      const homeX = GAME_WIDTH / 2 + btnGap / 2;
+
+      // --- RETRY BUTTON (green) ---
+      // Shadow
+      ctx.fillStyle = '#2E7D32';
+      ctx.fillRect(retryX + 2, btnY + 3, btnW, btnH);
+      // Body
+      ctx.fillStyle = '#4CAF50';
+      ctx.fillRect(retryX, btnY, btnW, btnH);
+      // Border
+      ctx.strokeStyle = '#1B5E20';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(retryX, btnY, btnW, btnH);
+      // Highlight
+      ctx.fillStyle = 'rgba(255,255,255,0.25)';
+      ctx.fillRect(retryX + 2, btnY + 2, btnW - 4, btnH / 2 - 2);
+      // Text
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.font = 'bold 16px monospace';
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = '#000';
+      ctx.strokeText('RETRY', retryX + btnW / 2, btnY + btnH / 2);
       ctx.fillStyle = '#FFF';
-      ctx.fillText('TAP TO RETRY', GAME_WIDTH / 2, 350);
-      ctx.globalAlpha = 1;
+      ctx.fillText('RETRY', retryX + btnW / 2, btnY + btnH / 2);
 
-      ctx.font = '14px monospace';
-      ctx.fillStyle = '#AAA';
-      ctx.fillText('Press H for Home', GAME_WIDTH / 2, 390);
+      retryBtnBounds = { x: retryX, y: btnY, w: btnW, h: btnH };
+
+      // --- HOME BUTTON (blue) ---
+      // Shadow
+      ctx.fillStyle = '#1565C0';
+      ctx.fillRect(homeX + 2, btnY + 3, btnW, btnH);
+      // Body
+      ctx.fillStyle = '#2196F3';
+      ctx.fillRect(homeX, btnY, btnW, btnH);
+      // Border
+      ctx.strokeStyle = '#0D47A1';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(homeX, btnY, btnW, btnH);
+      // Highlight
+      ctx.fillStyle = 'rgba(255,255,255,0.25)';
+      ctx.fillRect(homeX + 2, btnY + 2, btnW - 4, btnH / 2 - 2);
+      // Text
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.font = 'bold 16px monospace';
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = '#000';
+      ctx.strokeText('HOME', homeX + btnW / 2, btnY + btnH / 2);
+      ctx.fillStyle = '#FFF';
+      ctx.fillText('HOME', homeX + btnW / 2, btnY + btnH / 2);
+
+      homeBtnBounds = { x: homeX, y: btnY, w: btnW, h: btnH };
     }
 
     function handleGameOverClick(x, y) {
-      // Any tap/click retries the game
-      gameState = 'playing';
-      resetGame();
+      // Check RETRY button
+      if (retryBtnBounds &&
+          x >= retryBtnBounds.x && x <= retryBtnBounds.x + retryBtnBounds.w &&
+          y >= retryBtnBounds.y && y <= retryBtnBounds.y + retryBtnBounds.h) {
+        gameState = 'playing';
+        resetGame();
+        startMusic();
+        return;
+      }
+      // Check HOME button
+      if (homeBtnBounds &&
+          x >= homeBtnBounds.x && x <= homeBtnBounds.x + homeBtnBounds.w &&
+          y >= homeBtnBounds.y && y <= homeBtnBounds.y + homeBtnBounds.h) {
+        gameState = 'home';
+        startMusic();
+        return;
+      }
     }
 
     // ============================================================
@@ -927,8 +1178,10 @@
     }
 
     function startGame() {
+      initAudio();
       gameState = 'playing';
       resetGame();
+      startMusic();
     }
 
     function goHome() {
@@ -1003,6 +1256,7 @@
       }
       if (e.code === 'KeyH' && gameState === 'gameover') {
         goHome();
+        startMusic();
       }
     });
 
