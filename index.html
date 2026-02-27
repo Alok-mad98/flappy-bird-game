@@ -232,6 +232,18 @@
     // Ground scroll offset
     let groundX = 0;
 
+    // Game over button cooldown (prevent double-tap)
+    let gameOverTime = 0;
+    const GAMEOVER_COOLDOWN = 300; // ms before buttons become clickable
+
+    // Level-up flash text
+    let levelUpText = '';
+    let levelUpTimer = 0;
+    const LEVEL_UP_DURATION = 1500; // ms to show level-up text
+
+    // New best score detection
+    let isNewBest = false;
+
     // ============================================================
     // AUDIO SYSTEM (Task 11)
     // ============================================================
@@ -663,6 +675,8 @@
           // Check for level change
           if (score > 0 && score % POINTS_PER_LEVEL === 0) {
             playSound('levelUp');
+            levelUpText = 'LEVEL ' + getCurrentLevelNumber() + '!';
+            levelUpTimer = LEVEL_UP_DURATION;
           }
         }
 
@@ -887,13 +901,17 @@
 
     function die() {
       gameState = 'gameover';
+      gameOverTime = performance.now();
       stopMusic();
       playSound('hit');
 
-      // Save best score
+      // Save best score and detect new best
       const best = parseInt(localStorage.getItem('flappyBest') || '0');
       if (score > best) {
         localStorage.setItem('flappyBest', score.toString());
+        isNewBest = true;
+      } else {
+        isNewBest = false;
       }
     }
 
@@ -955,6 +973,29 @@
       drawGround();
       drawBird();
       drawHUD();
+
+      // Level-up flash text
+      if (levelUpTimer > 0) {
+        levelUpTimer -= cappedDt;
+        ctx.save();
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.font = 'bold 32px monospace';
+        ctx.lineWidth = 4;
+        ctx.strokeStyle = '#000';
+        // Pulsing scale effect
+        const pulse = 1 + 0.05 * Math.sin(Date.now() * 0.01);
+        const flashAlpha = Math.min(1, levelUpTimer / 300); // fade out in last 300ms
+        ctx.globalAlpha = flashAlpha;
+        ctx.save();
+        ctx.translate(GAME_WIDTH / 2, GAME_HEIGHT / 2 - 30);
+        ctx.scale(pulse, pulse);
+        ctx.strokeText(levelUpText, 0, 0);
+        ctx.fillStyle = '#FFD700';
+        ctx.fillText(levelUpText, 0, 0);
+        ctx.restore();
+        ctx.restore();
+      }
 
       // "TAP TO START" prompt before first flap
       if (!gameStarted) {
@@ -1141,9 +1182,29 @@
       ctx.fillText('HOME', homeX + btnW / 2, btnY + btnH / 2);
 
       homeBtnBounds = { x: homeX, y: btnY, w: btnW, h: btnH };
+
+      // NEW BEST! flashing text
+      if (isNewBest) {
+        ctx.save();
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.font = 'bold 20px monospace';
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = '#000';
+        // Flashing effect: oscillate alpha
+        const flashAlpha = 0.5 + 0.5 * Math.sin(Date.now() * 0.008);
+        ctx.globalAlpha = flashAlpha;
+        ctx.strokeText('NEW BEST!', GAME_WIDTH / 2, panelY - 18);
+        ctx.fillStyle = '#FFD700';
+        ctx.fillText('NEW BEST!', GAME_WIDTH / 2, panelY - 18);
+        ctx.restore();
+      }
     }
 
     function handleGameOverClick(x, y) {
+      // Prevent double-tap: ignore clicks within cooldown period after death
+      if (performance.now() - gameOverTime < GAMEOVER_COOLDOWN) return;
+
       // Check RETRY button
       if (retryBtnBounds &&
           x >= retryBtnBounds.x && x <= retryBtnBounds.x + retryBtnBounds.w &&
@@ -1175,6 +1236,9 @@
       groundX = 0;
       pipeSpawnTimer = 0;
       gameStarted = false;
+      levelUpTimer = 0;
+      levelUpText = '';
+      isNewBest = false;
     }
 
     function startGame() {
@@ -1251,7 +1315,9 @@
         } else if (gameState === 'playing') {
           flap();
         } else if (gameState === 'gameover') {
-          startGame();
+          if (performance.now() - gameOverTime >= GAMEOVER_COOLDOWN) {
+            startGame();
+          }
         }
       }
       if (e.code === 'KeyH' && gameState === 'gameover') {
