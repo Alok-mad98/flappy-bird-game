@@ -46,21 +46,22 @@
     const GROUND_HEIGHT = 56;
     const GROUND_Y = GAME_HEIGHT - GROUND_HEIGHT;
 
-    // Bird physics
-    const GRAVITY = 0.4;
-    const FLAP_FORCE = -6.5;
-    const MAX_FALL_SPEED = 8;
+    // Bird physics - these are DEFAULT/fallback values
+    // Actual values come from LEVELS config and scale up with difficulty
+    let GRAVITY = 0.12;
+    let FLAP_FORCE = -3.8;
+    let MAX_FALL_SPEED = 4.0;
     const BIRD_FRAME_COUNT = 4;
     const BIRD_FRAME_INTERVAL = 100; // ms
     const BIRD_SPRITE_W = 16;
     const BIRD_SPRITE_H = 16;
-    const BIRD_SCALE = 2.5;
-    const BIRD_DISPLAY_SIZE = BIRD_SPRITE_W * BIRD_SCALE; // 40px
+    const BIRD_SCALE = 1.7;
+    const BIRD_DISPLAY_SIZE = BIRD_SPRITE_W * BIRD_SCALE; // ~27px (OG: ~5% of screen)
 
-    // Pipe dimensions
-    const PIPE_WIDTH = 52;
-    const PIPE_CAP_HEIGHT = 12;
-    const PIPE_CAP_OVERHANG = 4; // how much wider the cap is on each side
+    // Pipe dimensions (OG: ~12% of screen width)
+    const PIPE_WIDTH = 36;
+    const PIPE_CAP_HEIGHT = 14;
+    const PIPE_CAP_OVERHANG = 3;
 
     // Level points
     const POINTS_PER_LEVEL = 15;
@@ -155,16 +156,18 @@
       { body: '#FFFFFF', cap: '#CCCCCC' },   // 8: white
     ];
 
+    // Starts SLOW and gentle, gets faster and harder with each level.
+    // gravity/flap/maxFall control bird speed; speed controls pipe scroll.
     const LEVELS = [
-      { bg: 'bg1', tileStyle: 1, pipeColor: 0, bird: 'bird1_1', speed: 2.0, gap: 130, spacing: 220 },
-      { bg: 'bg2', tileStyle: 2, pipeColor: 1, bird: 'bird1_2', speed: 2.2, gap: 125, spacing: 210 },
-      { bg: 'bg3', tileStyle: 3, pipeColor: 2, bird: 'bird1_3', speed: 2.4, gap: 120, spacing: 200 },
-      { bg: 'bg4', tileStyle: 4, pipeColor: 3, bird: 'bird2_1', speed: 2.6, gap: 115, spacing: 195 },
-      { bg: 'bg5', tileStyle: 5, pipeColor: 4, bird: 'bird2_2', speed: 2.8, gap: 110, spacing: 190 },
-      { bg: 'bg6', tileStyle: 1, pipeColor: 5, bird: 'bird2_3', speed: 3.0, gap: 105, spacing: 185 },
-      { bg: 'bg7', tileStyle: 2, pipeColor: 6, bird: 'bird1_4', speed: 3.2, gap: 100, spacing: 180 },
-      { bg: 'bg8', tileStyle: 3, pipeColor: 7, bird: 'bird2_4', speed: 3.4, gap: 95,  spacing: 175 },
-      { bg: 'bg9', tileStyle: 4, pipeColor: 8, bird: 'bird1_5', speed: 3.6, gap: 90,  spacing: 170 },
+      { bg: 'bg1', tileStyle: 1, pipeColor: 0, bird: 'bird1_1', speed: 1.5, gap: 105, spacing: 210, gravity: 0.12, flap: -3.8, maxFall: 4.0 },
+      { bg: 'bg2', tileStyle: 2, pipeColor: 1, bird: 'bird1_2', speed: 1.6, gap: 100, spacing: 200, gravity: 0.14, flap: -3.9, maxFall: 4.5 },
+      { bg: 'bg3', tileStyle: 3, pipeColor: 2, bird: 'bird1_3', speed: 1.8, gap: 97,  spacing: 195, gravity: 0.16, flap: -4.0, maxFall: 5.0 },
+      { bg: 'bg4', tileStyle: 4, pipeColor: 3, bird: 'bird2_1', speed: 1.9, gap: 94,  spacing: 188, gravity: 0.17, flap: -4.1, maxFall: 5.5 },
+      { bg: 'bg5', tileStyle: 5, pipeColor: 4, bird: 'bird2_2', speed: 2.0, gap: 91,  spacing: 182, gravity: 0.19, flap: -4.3, maxFall: 6.0 },
+      { bg: 'bg6', tileStyle: 1, pipeColor: 5, bird: 'bird2_3', speed: 2.2, gap: 88,  spacing: 176, gravity: 0.21, flap: -4.5, maxFall: 6.5 },
+      { bg: 'bg7', tileStyle: 2, pipeColor: 6, bird: 'bird1_4', speed: 2.3, gap: 85,  spacing: 170, gravity: 0.23, flap: -4.7, maxFall: 7.0 },
+      { bg: 'bg8', tileStyle: 3, pipeColor: 7, bird: 'bird2_4', speed: 2.5, gap: 82,  spacing: 165, gravity: 0.25, flap: -4.9, maxFall: 7.5 },
+      { bg: 'bg9', tileStyle: 4, pipeColor: 8, bird: 'bird1_5', speed: 2.6, gap: 80,  spacing: 160, gravity: 0.28, flap: -5.0, maxFall: 8.0 },
     ];
 
     // PipeStyle spritesheet layouts
@@ -191,14 +194,18 @@
       if (totalLevel < LEVELS.length) return LEVELS[totalLevel];
       // On subsequent loops, cap difficulty at level 9 values but use visual loop
       const visual = getCurrentLevel();
+      const maxLvl = LEVELS[LEVELS.length - 1];
       return {
         bg: visual.bg,
         tileStyle: visual.tileStyle,
         pipeColor: visual.pipeColor,
         bird: visual.bird,
-        speed: 3.6,
-        gap: 90,
-        spacing: 170
+        speed: maxLvl.speed,
+        gap: maxLvl.gap,
+        spacing: maxLvl.spacing,
+        gravity: maxLvl.gravity,
+        flap: maxLvl.flap,
+        maxFall: maxLvl.maxFall
       };
     }
 
@@ -407,7 +414,7 @@
       // Draw bird - use real sprite if bird1_1 has loaded, otherwise yellow placeholder
       const loadBird = assets.bird1_1;
       if (loadBird) {
-        const s = 3;
+        const s = BIRD_SCALE;
         ctx.drawImage(
           loadBird,
           loadingBirdFrame * BIRD_SPRITE_W, 0, BIRD_SPRITE_W, BIRD_SPRITE_H,
@@ -418,7 +425,8 @@
       } else {
         // Placeholder yellow rectangle
         ctx.fillStyle = '#FFD700';
-        ctx.fillRect(GAME_WIDTH / 2 - 20, birdCenterY - 20, 40, 40);
+        const ps = BIRD_DISPLAY_SIZE / 2;
+        ctx.fillRect(GAME_WIDTH / 2 - ps, birdCenterY - ps, BIRD_DISPLAY_SIZE, BIRD_DISPLAY_SIZE);
       }
 
       // Progress bar
@@ -467,14 +475,19 @@
         ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
       }
 
-      // Scrolling ground at bottom
+      // Scrolling ground at bottom using TileStyle1 ground tiles
       homeGroundX -= 1.5;
-      const ground = assets.simple1;
-      if (ground) {
-        const gW = ground.width * (GROUND_HEIGHT / ground.height);
-        if (homeGroundX <= -gW) homeGroundX += gW;
-        for (let x = homeGroundX; x < GAME_WIDTH + gW; x += gW) {
-          ctx.drawImage(ground, x, GROUND_Y, gW, GROUND_HEIGHT);
+      const tileSheet = assets.tile1;
+      if (tileSheet) {
+        const SRC_X = 16;
+        const SRC_Y = 16;
+        const SRC_W = 96;  // 6 tiles wide
+        const SRC_H = 32;  // 2 tile rows (surface + dirt)
+        const scale = GROUND_HEIGHT / SRC_H;
+        const destW = SRC_W * scale;
+        if (homeGroundX <= -destW) homeGroundX += destW;
+        for (let x = homeGroundX; x < GAME_WIDTH + destW; x += destW) {
+          ctx.drawImage(tileSheet, SRC_X, SRC_Y, SRC_W, SRC_H, x, GROUND_Y, destW, GROUND_HEIGHT);
         }
       } else {
         ctx.fillStyle = '#8B6914';
@@ -502,7 +515,7 @@
 
       const birdImg = assets.bird1_1;
       if (birdImg) {
-        const s = 3;
+        const s = BIRD_SCALE;
         const dx = GAME_WIDTH / 2 - (BIRD_SPRITE_W * s) / 2;
         const dy = 200 + homeBirdBobY - (BIRD_SPRITE_H * s) / 2;
         ctx.drawImage(
@@ -577,7 +590,9 @@
         gameStarted = true;
         spawnPipe(); // first pipe immediately
       }
-      bird.velocity = FLAP_FORCE;
+      // Use level-specific flap force (gets stronger as levels increase)
+      const diff = getDifficulty();
+      bird.velocity = diff.flap;
       playSound('flap');
     }
 
@@ -596,16 +611,17 @@
         return;
       }
 
-      // Apply gravity
-      bird.velocity += GRAVITY;
-      if (bird.velocity > MAX_FALL_SPEED) bird.velocity = MAX_FALL_SPEED;
+      // Use level-specific physics (slow at start, faster each level)
+      const diff = getDifficulty();
+      bird.velocity += diff.gravity;
+      if (bird.velocity > diff.maxFall) bird.velocity = diff.maxFall;
       bird.y += bird.velocity;
 
-      // Rotation based on velocity
+      // Rotation: -25° on flap, gradually to +90° while falling
       if (bird.velocity < 0) {
-        bird.rotation = Math.max(bird.velocity * 6, -30);
+        bird.rotation = Math.max(bird.velocity * 5, -25);
       } else {
-        bird.rotation = Math.min(bird.velocity * 4, 90);
+        bird.rotation = Math.min(bird.velocity * 10, 90);
       }
 
       // Frame animation
@@ -843,13 +859,23 @@
 
     function drawGround() {
       const level = getCurrentLevel();
-      const ground = assets['simple' + level.tileStyle];
+      const tileSheet = assets['tile' + level.tileStyle];
 
-      if (ground) {
-        const gW = ground.width * (GROUND_HEIGHT / ground.height);
-        if (groundX <= -gW) groundX += gW;
-        for (let x = groundX; x < GAME_WIDTH + gW; x += gW) {
-          ctx.drawImage(ground, x, GROUND_Y, gW, GROUND_HEIGHT);
+      if (tileSheet) {
+        // TileStyle spritesheets: 16px transparent border, tiles start at (16,16)
+        // Row 0: surface tiles (dark border top + brown dirt)
+        // Row 1: pure dirt fill tiles
+        // Use 6 tiles wide x 2 rows for natural-looking ground
+        const SRC_X = 16;
+        const SRC_Y = 16;
+        const SRC_W = 96;  // 6 tiles wide (variety)
+        const SRC_H = 32;  // 2 tile rows (surface + dirt)
+        const scale = GROUND_HEIGHT / SRC_H;
+        const destW = SRC_W * scale;
+
+        if (groundX <= -destW) groundX += destW;
+        for (let x = groundX; x < GAME_WIDTH + destW; x += destW) {
+          ctx.drawImage(tileSheet, SRC_X, SRC_Y, SRC_W, SRC_H, x, GROUND_Y, destW, GROUND_HEIGHT);
         }
       } else {
         ctx.fillStyle = '#8B4513';
@@ -868,8 +894,8 @@
     // ============================================================
 
     function checkCollision() {
-      // Use 70% of display size for forgiving hitbox
-      const hitboxScale = 0.7;
+      // OG hitbox: 80-85% of sprite bounds
+      const hitboxScale = 0.82;
       const bw = BIRD_DISPLAY_SIZE * hitboxScale;
       const bh = BIRD_DISPLAY_SIZE * hitboxScale;
       const bx = bird.x - bw / 2;
@@ -878,8 +904,11 @@
       // Ground collision
       if (bird.y + bh / 2 >= GROUND_Y) return true;
 
-      // Ceiling collision
-      if (bird.y - bh / 2 <= 0) return true;
+      // Ceiling: clamp bird position (original Flappy Bird doesn't kill at ceiling)
+      if (bird.y - bh / 2 <= 0) {
+        bird.y = bh / 2;
+        bird.velocity = 0;
+      }
 
       // Pipe collision (rect-rect overlap)
       for (let i = 0; i < pipes.length; i++) {
